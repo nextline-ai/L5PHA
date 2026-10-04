@@ -2,7 +2,7 @@
 
 ## 보안 문제 제보
 
-공개 이슈에 API 키, 연결 코드, 계좌번호, 잔액·보유 내역, 세션, 개인 이메일 또는 원본 운영 로그를 올리지 마세요. 취약점은 [GitHub 비공개 보안 제보](https://github.com/xtower-studio/L5PHA/security/advisories/new)로 알려주세요. 실제 데이터 대신 가린 재현 예시와 영향 범위를 설명해주세요.
+공개 이슈에 API 키, 연결 코드, 계좌번호, 잔액·보유 내역, 세션, 개인 이메일 또는 원본 운영 로그를 올리지 마세요. 취약점은 [GitHub 비공개 보안 제보](https://github.com/nextline-ai/L5PHA/security/advisories/new)로 알려주세요. 실제 데이터 대신 가린 재현 예시와 영향 범위를 설명해주세요.
 
 ## 보호하는 정보
 

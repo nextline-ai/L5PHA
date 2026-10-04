@@ -3,6 +3,8 @@
 Python 3.12 이상, uv, Node.js가 필요합니다. 일반 사용자는 [설치 화면](https://15.134.164.178/install)을 이용하세요.
 
 ```sh
+git clone https://github.com/nextline-ai/L5PHA.git
+cd L5PHA
 uv sync --locked --extra dev
 npm ci --ignore-scripts
 uv run pytest -q
