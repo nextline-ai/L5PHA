@@ -1,0 +1,9 @@
+[Unit]
+Description=Renew Veyquant short-lived IP certificate
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/veyquant-certbot/bin/certbot renew --quiet --deploy-hook "/usr/bin/systemctl reload nginx"
+TimeoutStartSec=300

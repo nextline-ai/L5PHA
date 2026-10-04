@@ -1,0 +1,16 @@
+{
+  "name": "l5pha-miniapp",
+  "version": "0.26.1",
+  "private": true,
+  "scripts": {
+    "build:ui": "node scripts/build_ui.cjs",
+    "test:ui": "node --test tests/web_auth.test.cjs",
+    "test:browser": "node tests/web_layout.cjs && node tests/install_layout.cjs"
+  },
+  "devDependencies": {
+    "@heroui/styles": "3.2.6",
+    "@tailwindcss/cli": "4.3.3",
+    "playwright": "1.62.1",
+    "tailwindcss": "4.3.3"
+  }
+}

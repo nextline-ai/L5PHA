@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: IAM-only AgentCore web search for public Veyquant research, deploy in ap-northeast-1.
+Resources:
+  SearchRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: bedrock-agentcore.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:${AWS::AccountId}:gateway/*'
+      Policies:
+        - PolicyName: SearchOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock-agentcore:InvokeWebSearch
+                Resource: !Sub 'arn:${AWS::Partition}:bedrock-agentcore:${AWS::Region}:aws:tool/web-search.v1'
+  SearchGateway:
+    Type: AWS::BedrockAgentCore::Gateway
+    Properties:
+      Name: veyquant-public-research
+      Description: Public symbol research only. No account, broker or database tools.
+      AuthorizerType: AWS_IAM
+      ProtocolType: MCP
+      RoleArn: !GetAtt SearchRole.Arn
+      Tags:
+        Application: veyquant-ai
+  WebSearch:
+    Type: AWS::BedrockAgentCore::GatewayTarget
+    Properties:
+      GatewayIdentifier: !GetAtt SearchGateway.GatewayIdentifier
+      Name: web-search
+      Description: AWS-managed public web search without third-party API credentials.
+      CredentialProviderConfigurations:
+        - CredentialProviderType: GATEWAY_IAM_ROLE
+      TargetConfiguration:
+        Mcp:
+          Connector:
+            Source:
+              ConnectorId: web-search
+            Configurations:
+              - Name: WebSearch
+                ParameterValues: {}
+Outputs:
+  GatewayArn:
+    Value: !GetAtt SearchGateway.GatewayArn
+  GatewayUrl:
+    Value: !GetAtt SearchGateway.GatewayUrl

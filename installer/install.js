@@ -1,0 +1,25 @@
+'use strict';
+const el=id=>document.getElementById(id), storageKey='l5pha-install-v1';
+let release=null, identity=null, awsMode='new', awsPlan='paid';
+function show(step){for(let i=0;i<4;i++){el('install-step-'+i).hidden=i!==step;document.querySelector('[data-step="'+i+'"]').setAttribute('aria-current',i===step?'step':'false');}identity && (identity.step=step);save();window.scrollTo({top:0,behavior:'smooth'});}
+function save(){try{if(identity)sessionStorage.setItem(storageKey,JSON.stringify(identity));}catch{el('install-status').textContent='브라우저가 임시 저장을 허용하지 않습니다. 연결 코드를 따로 보관하고 이 탭을 유지해주세요.';}}
+async function initialize(){try{const response=await fetch('/install/release.json',{cache:'no-store',credentials:'omit'});if(!response.ok)throw Error();release=await response.json();const url=new URL(release.template_url);if(url.protocol!=='https:' || !/\.s3\.ap-southeast-2\.amazonaws\.com$/.test(url.hostname) || release.region!=='ap-southeast-2')throw Error();try{identity=JSON.parse(sessionStorage.getItem(storageKey));if(identity && (!/^[a-f0-9]{64}$/.test(identity.code)||identity.version!==release.version))identity=null;}catch{}if(identity){awsMode=identity.awsMode==='existing'?'existing':'new';awsPlan=identity.awsPlan==='free'?'free':'paid';renderAws();await launchLink();show(identity.step||1);}else show(0);el('install-status').textContent='설치 버전 '+release.version+' · Sydney';}catch{el('prepare-install').disabled=true;el('prepare-notice').textContent='설치 배포 파일이 아직 준비되지 않았거나 연결할 수 없습니다. 잠시 후 이 페이지를 다시 열어주세요.';}}
+async function launchLink(){const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(identity.code))),b=>b.toString(16).padStart(2,'0')).join('');const params=new URLSearchParams({templateURL:release.template_url,stackName:'l5pha-'+identity.id.slice(0,8),param_InvitationHash:hash,param_DeploymentId:identity.id});el('launch-aws').href='https://ap-southeast-2.console.aws.amazon.com/cloudformation/home?region=ap-southeast-2#/stacks/create/review?'+params;el('owner-code').value=identity.code;}
+el('prepare-install').addEventListener('click',async()=>{if(!['ready-aws','ready-toss','ready-telegram','ready-cost'].every(id=>el(id).checked)){el('prepare-notice').textContent='준비 항목 네 가지를 먼저 확인해주세요.';return;}if(awsMode==='new'&&!el('ready-limit').checked){el('prepare-notice').textContent=awsPlan==='paid'?'AWS Settings에서 이 Project의 Spend limit을 설정한 뒤 확인해주세요.':'Free Tier 적용 여부와 유료 전환 시 Spend limit 설정이 필요함을 확인해주세요.';return;}if(!release)return;const hex=n=>Array.from(crypto.getRandomValues(new Uint8Array(n)),b=>b.toString(16).padStart(2,'0')).join('');if(!identity)identity={code:hex(32),id:hex(16),version:release.version,step:1,awsMode,awsPlan};await launchLink();show(1);});
+async function copyCode(){try{await navigator.clipboard.writeText(identity.code);el('install-status').textContent='최초 연결 코드를 복사했습니다. Telegram 미니앱의 연결 화면에 붙여넣으세요.';}catch{el('owner-code').type='text';el('owner-code').select();el('install-status').textContent='코드가 선택됐습니다. 직접 복사해주세요.';}}
+for(const id of ['copy-owner-code','copy-owner-code-again'])el(id).addEventListener('click',copyCode);
+el('aws-complete').addEventListener('click',()=>show(2));el('telegram-complete').addEventListener('click',()=>show(3));
+el('forget-code').addEventListener('click',()=>{identity=null;sessionStorage.removeItem(storageKey);el('owner-code').value='';el('forget-code').disabled=true;el('install-status').textContent='이 브라우저의 연결 코드를 지웠습니다. 서버의 설정과 로그인에는 영향이 없습니다.';});
+function renderAws(){
+  const isNew=awsMode==='new';
+  el('aws-new').setAttribute('aria-pressed',String(isNew));el('aws-existing').setAttribute('aria-pressed',String(!isNew));
+  el('aws-new-guidance').hidden=!isNew;el('aws-plan').value=awsPlan;
+  el('aws-help').textContent=isNew?'처음 시작한다면 AWS New를 가장 권장합니다. Project별 월 비용 상한을 정하고, 한도에 도달하면 AWS가 리소스를 정지해 추가 AWS 비용을 제한합니다.':'이미 운영하는 AWS 계정을 사용할 수 있습니다. 일반 AWS Budgets 알림은 강제 비용 상한이 아닙니다. AWS New를 사용할 수 있다면 Project와 Spend limit으로 시작하는 것을 권장합니다.';
+  el('aws-account-link').textContent=isNew?'AWS New 시작하기 ↗':'기존 AWS 로그인 ↗';el('aws-account-link').href=isNew?'https://signin.aws.amazon.com/signup?request_type=register':'https://console.aws.amazon.com/';
+  el('aws-plan-help').textContent=awsPlan==='paid'?'Spend limit은 Paid Plan에서 제공합니다. 한도는 세전 AWS 비용에 적용되며 최소 설정액은 $20 또는 AWS가 제시한 예상 사용액 중 큰 값입니다.':'AWS가 이 계정에 제공하는 Free Tier의 크레딧·기간·서비스 범위를 확인하세요. 모든 계정에 제공되지는 않습니다. Paid Plan으로 전환할 때 Spend limit을 직접 설정하세요.';
+  el('ready-limit-label').textContent=awsPlan==='paid'?'설치할 Project의 Spend limit을 설정했습니다.':'Free Tier 적용 여부와, Paid Plan 전환 시 Spend limit 설정이 필요함을 확인했습니다.';
+  if(identity){Object.assign(identity,{awsMode,awsPlan});save();}
+}
+for(const id of ['aws-existing','aws-new'])el(id).addEventListener('click',()=>{awsMode=id==='aws-new'?'new':'existing';el('ready-limit').checked=false;el('prepare-notice').textContent='';renderAws();});
+el('aws-plan').addEventListener('change',()=>{awsPlan=el('aws-plan').value==='free'?'free':'paid';el('ready-limit').checked=false;renderAws();});
+renderAws();initialize();

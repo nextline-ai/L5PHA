@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "veyquant-ai"
+version = "0.26.1"
+description = "Personal AWS investor with owner-controlled guarded cash execution"
+requires-python = ">=3.12"
+dependencies = [
+  "httpx>=0.28,<1",
+  "websockets>=15,<18",
+  "cryptography>=50.0.2,<51",
+  "urllib3>=2.8,<3",
+  "boto3>=1.40,<2",
+  "starlette>=0.47,<2",
+  "uvicorn>=0.35,<1",
+  "python-dotenv>=1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "cfn-lint>=1.40,<2",
+  "jsonschema>=4.23,<5",
+  "pytest>=8,<10",
+  "pytest-asyncio>=1,<2",
+  "ruff>=0.12,<1",
+]
+
+[project.scripts]
+veyquant = "veyquant.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/veyquant"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

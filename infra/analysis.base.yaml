@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Veyquant private model stages and public research capabilities; no broker access.
+Parameters:
+  SearchGatewayArn:
+    Type: String
+    AllowedPattern: 'arn:aws:bedrock-agentcore:ap-northeast-1:[0-9]{12}:gateway/[a-z0-9-]+'
+  SearchGatewayUrl:
+    Type: String
+    AllowedPattern: 'https://[a-z0-9-]+\.gateway\.bedrock-agentcore\.ap-northeast-1\.amazonaws\.com/mcp'
+  ModelConfigurationRevision:
+    Type: String
+    Default: '0.12.0'
+    MaxLength: 64
+    AllowedPattern: '[A-Za-z0-9._-]+'
+    Description: Change when rotating provider configuration to publish a fresh immutable version.
+Resources:
+  ProviderKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Encrypt owner-entered model, search and disclosure API keys; no broker credentials.
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableAccountIamPolicies
+            Effect: Allow
+            Principal: {AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'}
+            Action: 'kms:*'
+            Resource: '*'
+  AnalysisLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-research'
+      RetentionInDays: 7
+  AnalysisRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BoundedResearch
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ExplicitDenyOutsideResearch
+                Effect: Deny
+                NotAction: [bedrock:InvokeModel, bedrock:GetInferenceProfile, logs:CreateLogStream, logs:PutLogEvents, kms:Decrypt, kms:Encrypt, bedrock-agentcore:InvokeGateway]
+                Resource: '*'
+              - Sid: InvokeReviewedModels
+                Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-4::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-4::foundation-model/anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-opus-4-6-v1'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/anthropic.claude-opus-4-6-v1'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-4::foundation-model/anthropic.claude-opus-4-6-v1'
+                Condition:
+                  ArnEquals:
+                    lambda:SourceFunctionArn: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-research'
+              - Sid: ReadReviewedInferenceProfiles
+                Effect: Allow
+                Action: bedrock:GetInferenceProfile
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-opus-4-6-v1'
+              - Sid: DenyOtherModels
+                Effect: Deny
+                Action: bedrock:InvokeModel
+                NotResource:
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-4::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-4::foundation-model/anthropic.claude-sonnet-4-6'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/au.anthropic.claude-opus-4-6-v1'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-2::foundation-model/anthropic.claude-opus-4-6-v1'
+                  - !Sub 'arn:${AWS::Partition}:bedrock:ap-southeast-4::foundation-model/anthropic.claude-opus-4-6-v1'
+              - Sid: ProviderKeyOnly
+                Effect: Allow
+                Action: [kms:Encrypt, kms:Decrypt]
+                Resource: !GetAtt ProviderKey.Arn
+                Condition:
+                  ArnEquals:
+                    lambda:SourceFunctionArn: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-research'
+                  StringEquals:
+                    'kms:EncryptionContext:application': veyquant-ai
+                    'kms:EncryptionContext:purpose': provider-api-key
+                    'kms:EncryptionContext:provider': [openai, gemini, brave, dart, krx]
+              - Sid: DenyEncryptOtherKeys
+                Effect: Deny
+                Action: kms:Encrypt
+                NotResource: !GetAtt ProviderKey.Arn
+              - Sid: DenyDecryptOutsideThisFunction
+                Effect: Deny
+                Action: kms:Decrypt
+                NotResource: !GetAtt ProviderKey.Arn
+                Condition:
+                  ArnNotEquals:
+                    'kms:EncryptionContext:aws:lambda:FunctionArn': !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-research'
+              - Sid: FunctionLogsOnly
+                Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt AnalysisLogs.Arn
+              - Sid: InvokePublicSearchOnly
+                Effect: Allow
+                Action: bedrock-agentcore:InvokeGateway
+                Resource: !Ref SearchGatewayArn
+                Condition:
+                  ArnEquals:
+                    lambda:SourceFunctionArn: !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${AWS::StackName}-research'
+              - Sid: DenyOtherGateways
+                Effect: Deny
+                Action: bedrock-agentcore:InvokeGateway
+                NotResource: !Ref SearchGatewayArn
+  AnalysisFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-research'
+      Role: !GetAtt AnalysisRole.Arn
+      Runtime: python3.13
+      Handler: index.handler
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 240
+      # Account quota does not permit reservation; dispatcher holds an exclusive OS lock.
+      LoggingConfig:
+        LogFormat: JSON
+        ApplicationLogLevel: WARN
+        SystemLogLevel: WARN
+        LogGroup: !Ref AnalysisLogs
+      Environment:
+        Variables:
+          MODEL_CONFIGURATION_REVISION: !Ref ModelConfigurationRevision
+          PROVIDER_KEY_ARN: !GetAtt ProviderKey.Arn
+          AGENTCORE_SEARCH_URL: !Ref SearchGatewayUrl
+      Code:
+        ZipFile: |
+          # Build with scripts/render_analysis_template.py before deploying.
+          def handler(event, context):
+              raise RuntimeError('deploy_rendered_template_only')
+  AnalysisVersion:
+    Type: AWS::Lambda::Version
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: !Ref ModelConfigurationRevision
+      FunctionName: !Ref AnalysisFunction
+  AnalysisAlias:
+    Type: AWS::Lambda::Alias
+    Properties:
+      Name: shadow
+      FunctionName: !Ref AnalysisFunction
+      FunctionVersion: !GetAtt AnalysisVersion.Version
+Outputs:
+  AnalysisArn:
+    Description: Only this alias is callable by the trusted host dispatcher.
+    Value: !Ref AnalysisAlias
+  AnalysisRoleArn:
+    Description: Separate execution role with only provider-key KMS and model inference permissions.
+    Value: !GetAtt AnalysisRole.Arn

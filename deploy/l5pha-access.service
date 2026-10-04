@@ -1,0 +1,34 @@
+[Unit]
+Description=L5PHA shared Telegram access bot (operator only)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/var/lib/l5pha-access-secret/bot.cred
+[Service]
+DynamicUser=yes
+StateDirectory=l5pha-access
+StateDirectoryMode=0700
+Environment=PYTHONPATH=/opt/veyquant/runtime/src
+Environment=AWS_EC2_METADATA_DISABLED=true
+Environment=L5PHA_INSTALL_URL=https://15.134.164.178/install
+LoadCredentialEncrypted=bot:/var/lib/l5pha-access-secret/bot.cred
+ExecStart=/opt/veyquant/venv/bin/python -m veyquant.access_bot
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=169.254.0.0/16 127.0.0.0/8 ::1/128
+CapabilityBoundingSet=
+InaccessiblePaths=/var/lib/veyquant /var/lib/veyquant-secrets /var/run/awssmatoken
+UMask=0077
+LimitCORE=0
+[Install]
+WantedBy=multi-user.target

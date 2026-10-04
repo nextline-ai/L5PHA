@@ -1,0 +1,24 @@
+rule execution_bounded {
+  Resources.AnalysisFunction.Properties.MemorySize == 256
+  Resources.AnalysisFunction.Properties.Timeout <= 240
+}
+rule logs_expire {
+  Resources.AnalysisLogs.Properties.RetentionInDays <= 7
+  Resources.AnalysisLogs.DeletionPolicy == "Retain"
+}
+rule no_public_function_url {
+  Resources.*.Type != "AWS::Lambda::Url"
+}
+rule no_managed_broad_role {
+  Resources.AnalysisRole.Properties.ManagedPolicyArns !exists
+}
+rule explicit_deny_outside_research {
+  Resources.AnalysisRole.Properties.Policies[0].PolicyDocument.Statement[0].Effect == "Deny"
+  Resources.AnalysisRole.Properties.Policies[0].PolicyDocument.Statement[0].NotAction == ["bedrock:InvokeModel", "bedrock:GetInferenceProfile", "logs:CreateLogStream", "logs:PutLogEvents", "kms:Decrypt", "kms:Encrypt", "bedrock-agentcore:InvokeGateway"]
+}
+
+rule provider_keys_retained_and_rotated {
+  Resources.ProviderKey.DeletionPolicy == "Retain"
+  Resources.ProviderKey.UpdateReplacePolicy == "Retain"
+  Resources.ProviderKey.Properties.EnableKeyRotation == true
+}

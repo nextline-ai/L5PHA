@@ -1,0 +1,257 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Veyquant single-owner read-only runtime. Public HTTP challenge and HTTPS ingress,
+  one retained broker secret. Bootstrap write access defaults off. No model invocation.
+Parameters:
+  ImageId:
+    Type: AWS::EC2::Image::Id
+    Description: Reviewed Amazon Linux 2023 x86_64 AMI with current SSM Agent, in this region.
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues: [t3.micro, t3.small]
+    Description: Small connectivity PoC host; not a production sizing commitment.
+  AllowSecretBootstrap:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+    Description: Temporary one-secret write permission during provisioning only.
+  AnalysisFunctionArn:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^arn:aws:lambda:ap-southeast-2:[0-9]{12}:function:[A-Za-z0-9_-]+:shadow$"
+    Description: Optional reviewed private shadow Lambda alias; empty keeps invocation disabled.
+Conditions:
+  AnalysisConfigured: !Not [!Equals [!Ref AnalysisFunctionArn, ""]]
+  BootstrapSecret: !Equals [!Ref AllowSecretBootstrap, 'true']
+Resources:
+  BrokerSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: Veyquant broker credentials; populated through encrypted operator provisioning.
+      Name: !Sub '${AWS::StackName}-toss'
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.83.0.0/24
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-poc'}]
+  Gateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref Gateway
+  Subnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.83.0.0/26
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [0, !GetAZs '']
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  OutboundRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Gateway
+  RouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTable
+      SubnetId: !Ref Subnet
+  HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      # Preserve the initial description to avoid replacing the security group.
+      GroupDescription: No inbound access; HTTPS egress for SSM and connectivity tests.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+  HostRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: SessionOnly
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: SessionChannels
+                Effect: Allow
+                Action:
+                  - ssm:UpdateInstanceInformation
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                Resource: '*'
+              - Sid: ExplicitlyDenyOtherAwsActions
+                Effect: Deny
+                NotAction:
+                  - ssm:UpdateInstanceInformation
+                  - ssmmessages:CreateControlChannel
+                  - ssmmessages:CreateDataChannel
+                  - ssmmessages:OpenControlChannel
+                  - ssmmessages:OpenDataChannel
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - kms:Decrypt
+                  - !If [AnalysisConfigured, "lambda:InvokeFunction", !Ref "AWS::NoValue"]
+                  - !If [BootstrapSecret, 'kms:GenerateDataKey', !Ref 'AWS::NoValue']
+                  - !If [BootstrapSecret, 'secretsmanager:PutSecretValue', !Ref 'AWS::NoValue']
+                Resource: '*'
+              - !If
+                - AnalysisConfigured
+                - Sid: InvokeShadowOnly
+                  Effect: Allow
+                  Action: lambda:InvokeFunction
+                  Resource: !Ref AnalysisFunctionArn
+                - !Ref AWS::NoValue
+              - !If
+                - AnalysisConfigured
+                - Sid: DenyOtherFunctions
+                  Effect: Deny
+                  Action: lambda:InvokeFunction
+                  # Alias authorization also evaluates the function and resolved version.
+                  # Allow remains scoped to the alias; direct versions have no Allow.
+                  NotResource:
+                    - !Sub
+                      - 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${Name}'
+                      - Name: !Select [6, !Split [':', !Ref AnalysisFunctionArn]]
+                    - !Sub
+                      - 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${Name}:*'
+                      - Name: !Select [6, !Split [':', !Ref AnalysisFunctionArn]]
+                - !Ref AWS::NoValue
+              - Sid: ReadOnlyBrokerSecret
+                Effect: Allow
+                Action: [secretsmanager:GetSecretValue, secretsmanager:DescribeSecret]
+                Resource: !Ref BrokerSecret
+              - Sid: SecretEnvelopeEncryption
+                Effect: Allow
+                Action:
+                  - kms:Decrypt
+                  - !If [BootstrapSecret, 'kms:GenerateDataKey', !Ref 'AWS::NoValue']
+                Resource: !Sub 'arn:${AWS::Partition}:kms:${AWS::Region}:${AWS::AccountId}:key/*'
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.${AWS::URLSuffix}'
+                    kms:EncryptionContext:SecretARN: !Ref BrokerSecret
+              - Sid: DenyKmsOutsideSecretsManager
+                Effect: Deny
+                Action: [kms:Decrypt, kms:GenerateDataKey]
+                Resource: '*'
+                Condition:
+                  StringNotEquals:
+                    kms:ViaService: !Sub 'secretsmanager.${AWS::Region}.${AWS::URLSuffix}'
+              - Sid: DenyKmsOutsideBrokerSecret
+                Effect: Deny
+                Action: [kms:Decrypt, kms:GenerateDataKey]
+                Resource: '*'
+                Condition:
+                  StringNotEquals:
+                    kms:EncryptionContext:SecretARN: !Ref BrokerSecret
+              - Sid: DenyOtherSecrets
+                Effect: Deny
+                Action: [secretsmanager:GetSecretValue, secretsmanager:DescribeSecret, secretsmanager:PutSecretValue]
+                NotResource: !Ref BrokerSecret
+              - !If
+                - BootstrapSecret
+                - Sid: BootstrapOneSecret
+                  Effect: Allow
+                  Action: secretsmanager:PutSecretValue
+                  Resource: !Ref BrokerSecret
+                - !Ref AWS::NoValue
+  HostProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref HostRole]
+  Host:
+    Type: AWS::EC2::Instance
+    DependsOn: OutboundRoute
+    Properties:
+      ImageId: !Ref ImageId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref HostProfile
+      SubnetId: !Ref Subnet
+      SecurityGroupIds: [!Ref HostSecurityGroup]
+      CreditSpecification: {CPUCredits: standard}
+      MetadataOptions:
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+        HttpEndpoint: enabled
+        HttpProtocolIpv6: disabled
+        InstanceMetadataTags: disabled
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 8
+            Encrypted: true
+            DeleteOnTermination: true
+      Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-poc'}]
+  Address:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+  AddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt Address.AllocationId
+      InstanceId: !Ref Host
+  DataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AvailabilityZone: !GetAtt Host.AvailabilityZone
+      Encrypted: true
+      VolumeType: gp3
+      Size: 8
+      Tags: [{Key: Name, Value: !Sub '${AWS::StackName}-data-retained'}]
+  DataAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/sdf
+      InstanceId: !Ref Host
+      VolumeId: !Ref DataVolume
+Outputs:
+  InstanceId:
+    Description: Session Manager target. No SSH ingress or key pair configured.
+    Value: !Ref Host
+  ExpectedOutboundIPv4:
+    Description: EIP to verify from the host before registering with Toss.
+    Value: !Ref Address
+  RetainedDataVolume:
+    Description: Persists after deletion and continues storage billing; not mounted automatically.
+    Value: !Ref DataVolume
+  InstanceRoleArn:
+    Description: SSM and exactly one broker secret; no Bedrock access. Bootstrap write defaults off.
+    Value: !GetAtt HostRole.Arn
+  BrokerSecretArn:
+    Description: Retained broker secret metadata only; never a secret value.
+    Value: !Ref BrokerSecret
+  PublicOrigin:
+    Description: Requires installed IP certificate and management service.
+    Value: !Sub 'https://${Address}'

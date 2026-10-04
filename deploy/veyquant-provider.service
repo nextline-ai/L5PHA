@@ -1,0 +1,36 @@
+[Unit]
+Description=Veyquant private provider connection bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=veyprovider
+Group=veyprovider
+Environment=PYTHONPATH=/opt/veyquant/runtime/src
+Environment=VEYQUANT_ANALYSIS_ARN=@ANALYSIS_ARN@
+ExecStart=/opt/veyquant/venv/bin/python -m veyquant.provider_connections
+RuntimeDirectory=veyquant-provider
+RuntimeDirectoryMode=0750
+UMask=0007
+Restart=on-failure
+RestartSec=15
+TimeoutStopSec=110
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=127.0.0.0/8 ::1/128
+CapabilityBoundingSet=
+ReadWritePaths=/run/veyquant-provider
+InaccessiblePaths=/var/lib/veyquant /var/lib/veyquant-secrets /var/run/awssmatoken
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

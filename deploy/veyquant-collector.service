@@ -1,0 +1,48 @@
+[Unit]
+Description=Veyquant Toss collector and guarded cash execution
+After=network-online.target veyquant-credentials.service
+Wants=network-online.target
+Requires=veyquant-credentials.service
+RequiresMountsFor=/var/lib/veyquant
+StartLimitIntervalSec=1800
+StartLimitBurst=3
+
+[Service]
+User=veycollector
+Group=veystatus
+SupplementaryGroups=veyexecution veyresearch
+RuntimeDirectory=veyquant-context
+RuntimeDirectoryMode=02750
+ExecStartPre=/bin/chgrp veyresearch /run/veyquant-context
+Environment=VEYQUANT_DECISION_V2=1
+Environment=PYTHONPATH=/opt/veyquant/runtime/src
+Environment=AWS_EC2_METADATA_DISABLED=true
+LoadCredentialEncrypted=toss:/var/lib/veyquant-secrets/toss.cred
+ExecStart=/opt/veyquant/venv/bin/python -m veyquant.collector --db /var/lib/veyquant/collector/observations.sqlite3 --status /var/lib/veyquant/status/collector.json --expected-ip @IP@ --market-export /var/lib/veyquant/status/market.json --account-export /var/lib/veyquant/account-view/account.json --execution-db /var/lib/veyquant/execution/orders.sqlite3 --execution-control /var/lib/veyquant/execution-control/control.json --execution-reports /var/lib/veyquant/reports/shadow.json --execution-status /var/lib/veyquant/account-view/execution.json --universe-export /var/lib/veyquant/status/universe.json
+UMask=0077
+Restart=on-failure
+RestartSec=30
+NotifyAccess=main
+WatchdogSec=180
+WatchdogSignal=SIGKILL
+TimeoutStopSec=20
+RestartPreventExitStatus=78
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=169.254.0.0/16 127.0.0.0/8 ::1/128 fe80::/10
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/veyquant/execution /var/lib/veyquant/collector /var/lib/veyquant/status /var/lib/veyquant/account-view /run/veyquant-context
+InaccessiblePaths=/var/lib/veyquant/management /var/run/awssmatoken
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

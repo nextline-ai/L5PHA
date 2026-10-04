@@ -1,0 +1,26 @@
+[Unit]
+Description=L5PHA first-account setup bridge
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/veyquant
+[Service]
+User=root
+Group=veyapi
+Environment=PYTHONPATH=/opt/veyquant/runtime/src
+Environment=AWS_REGION=ap-southeast-2
+Environment=VEYQUANT_SECRET_ARN=@SECRET_ARN@
+ExecStart=/opt/veyquant/venv/bin/python -m veyquant.setup_bridge
+RuntimeDirectory=veyquant-setup
+RuntimeDirectoryMode=0750
+UMask=0077
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/veyquant-secrets /var/lib/systemd /var/lib/veyquant/setup /run/veyquant-setup
+InaccessiblePaths=/var/lib/veyquant/execution /var/lib/veyquant/collector /var/lib/veyquant/analysis /var/lib/veyquant/management
+LimitCORE=0
+[Install]
+WantedBy=multi-user.target

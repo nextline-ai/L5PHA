@@ -1,0 +1,37 @@
+[Unit]
+Description=Veyquant owner management
+After=network.target aws-workload-credentials-provider-token.service
+Requires=aws-workload-credentials-provider-token.service
+RequiresMountsFor=/var/lib/veyquant
+
+[Service]
+User=veyweb
+Group=veyapi
+SupplementaryGroups=veystatus veyaccount veyprovider veyresearch
+Environment=PYTHONPATH=/opt/veyquant/runtime/src
+Environment=AWS_EC2_METADATA_DISABLED=true
+ExecStart=/opt/veyquant/venv/bin/python -m veyquant.cli serve --db /var/lib/veyquant/management/state.sqlite3 --bot-id @BOT_ID@ --origin https://@IP@ --unix-socket /run/veyquant-management/api.sock --collector-status /var/lib/veyquant/status/collector.json --shadow-control /var/lib/veyquant/control/shadow.json --shadow-reports /var/lib/veyquant/reports/shadow.json --account-status /var/lib/veyquant/account-view/account.json --execution-control /var/lib/veyquant/execution-control/control.json --execution-status /var/lib/veyquant/account-view/execution.json --universe /var/lib/veyquant/status/universe.json
+RuntimeDirectory=veyquant-management
+RuntimeDirectoryMode=0750
+UMask=0007
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX
+IPAddressDeny=any
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/veyquant/execution-control /var/lib/veyquant/management /var/lib/veyquant/control /run/veyquant-management
+InaccessiblePaths=/var/lib/veyquant/execution /var/lib/veyquant/collector /var/lib/veyquant-secrets /var/run/awssmatoken
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

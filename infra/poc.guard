@@ -1,0 +1,24 @@
+let hosts = Resources.*[ Type == 'AWS::EC2::Instance' ]
+let groups = Resources.*[ Type == 'AWS::EC2::SecurityGroup' ]
+let volumes = Resources.*[ Type == 'AWS::EC2::Volume' ]
+
+rule require_imdsv2 when %hosts !empty {
+    %hosts.Properties.MetadataOptions.HttpTokens == 'required'
+    %hosts.Properties.MetadataOptions.HttpPutResponseHopLimit == 1
+    %hosts.Properties.MetadataOptions.HttpProtocolIpv6 == 'disabled'
+}
+rule encrypted_root when %hosts !empty {
+    %hosts.Properties.BlockDeviceMappings.*.Ebs.Encrypted == true
+}
+rule no_ingress when %groups !empty {
+    %groups.Properties.SecurityGroupIngress empty
+}
+rule encrypted_retained_data when %volumes !empty {
+    %volumes.Properties.Encrypted == true
+    %volumes.DeletionPolicy == 'Retain'
+    %volumes.UpdateReplacePolicy == 'Retain'
+}
+rule explicit_role_deny {
+    Resources.HostRole.Properties.Policies[0].PolicyDocument.Statement[1].Effect == 'Deny'
+    Resources.HostRole.Properties.Policies[0].PolicyDocument.Statement[1].NotAction !empty
+}

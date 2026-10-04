@@ -1,0 +1,12 @@
+@layer theme, base, components, utilities;
+@import "tailwindcss" source(none);
+@import "@heroui/styles/base/base.css" layer(base);
+@import "@heroui/styles/themes/default";
+/* Only the HeroUI components used by the native miniapp. */
+@import "@heroui/styles/components/button.css" layer(components);
+@import "@heroui/styles/components/card.css" layer(components);
+@import "@heroui/styles/components/chip.css" layer(components);
+@import "@heroui/styles/components/input.css" layer(components);
+@import "@heroui/styles/components/textarea.css" layer(components);
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";

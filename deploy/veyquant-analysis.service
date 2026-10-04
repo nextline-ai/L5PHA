@@ -1,0 +1,40 @@
+[Unit]
+Description=Veyquant surveillance and decision orchestrator
+After=network-online.target veyquant-management.service veyquant-collector.service
+Wants=network-online.target veyquant-management.service veyquant-collector.service
+RequiresMountsFor=/var/lib/veyquant
+StartLimitIntervalSec=1800
+StartLimitBurst=3
+
+[Service]
+User=veyanalysis
+Group=veystatus
+SupplementaryGroups=veyresearch
+Environment=PYTHONPATH=/opt/veyquant/runtime/src
+ExecStart=/opt/veyquant/venv/bin/python -m veyquant.decision_runtime --db /var/lib/veyquant/analysis/decisions.sqlite3 --market /var/lib/veyquant/status/market.json --control /var/lib/veyquant/control/shadow.json --reports /var/lib/veyquant/reports/shadow.json --function-arn @ANALYSIS_ARN@
+RuntimeDirectory=veyquant-analysis
+RuntimeDirectoryMode=02750
+ExecStartPre=/bin/chgrp veyresearch /run/veyquant-analysis
+UMask=0077
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=280
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+IPAddressDeny=127.0.0.0/8 ::1/128
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/veyquant/analysis /var/lib/veyquant/reports /run/veyquant-analysis
+InaccessiblePaths=/var/lib/veyquant/execution /var/lib/veyquant/execution-control /var/lib/veyquant/management /var/lib/veyquant/collector /var/lib/veyquant/account-view /var/lib/veyquant-secrets /var/run/awssmatoken
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

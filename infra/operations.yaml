@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Veyquant encrypted data backups and host system recovery
+Parameters:
+  InstanceId:
+    Type: AWS::EC2::Instance::Id
+  DataVolumeId:
+    Type: AWS::EC2::Volume::Id
+  DataVolumeName:
+    Type: String
+    AllowedPattern: '[a-zA-Z0-9_-]+'
+  DataKeyArn:
+    Type: String
+    AllowedPattern: 'arn:aws:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+'
+Resources:
+  BackupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: dlm.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:dlm:${AWS::Region}:${AWS::AccountId}:policy/*'
+      Policies:
+        - PolicyName: OneDataVolumeSnapshots
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ec2:DescribeVolumes, ec2:DescribeInstances, ec2:DescribeSnapshots]
+                Resource: '*'
+              - Effect: Allow
+                Action: ec2:CreateSnapshot
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:volume/${DataVolumeId}'
+                  - !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*'
+              - Effect: Allow
+                Action: ec2:CreateTags
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*'
+                Condition:
+                  StringEquals:
+                    aws:RequestTag/veyquant:backup: scheduled
+              - Effect: Allow
+                Action: ec2:DeleteSnapshot
+                Resource: !Sub 'arn:${AWS::Partition}:ec2:${AWS::Region}::snapshot/*'
+                Condition:
+                  StringEquals:
+                    ec2:ResourceTag/veyquant:backup: scheduled
+              - Effect: Allow
+                Action: [kms:DescribeKey, kms:Decrypt, kms:ReEncryptFrom, kms:ReEncryptTo, kms:GenerateDataKeyWithoutPlaintext]
+                Resource: !Ref DataKeyArn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 'ec2.${AWS::Region}.${AWS::URLSuffix}'
+              - Effect: Allow
+                Action: kms:CreateGrant
+                Resource: !Ref DataKeyArn
+                Condition:
+                  Bool:
+                    kms:GrantIsForAWSResource: 'true'
+  DataSnapshots:
+    Type: AWS::DLM::LifecyclePolicy
+    Properties:
+      Description: Veyquant data snapshots every six hours retained seven days
+      State: ENABLED
+      ExecutionRoleArn: !GetAtt BackupRole.Arn
+      PolicyDetails:
+        PolicyType: EBS_SNAPSHOT_MANAGEMENT
+        ResourceTypes: [VOLUME]
+        TargetTags: [{Key: Name, Value: !Ref DataVolumeName}]
+        Schedules:
+          - Name: SixHourly
+            CopyTags: false
+            CreateRule: {Interval: 6, IntervalUnit: HOURS, Times: ['17:30']}
+            RetainRule: {Count: 28}
+            TagsToAdd:
+              - {Key: Application, Value: veyquant-ai}
+              - {Key: 'veyquant:backup', Value: scheduled}
+  SystemRecovery:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Recover this EC2 instance after sustained AWS system check failure
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed_System
+      Dimensions: [{Name: InstanceId, Value: !Ref InstanceId}]
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions: [!Sub 'arn:${AWS::Partition}:automate:${AWS::Region}:ec2:recover']
+Outputs:
+  SnapshotPolicyId:
+    Value: !Ref DataSnapshots
+  RecoveryAlarm:
+    Value: !Ref SystemRecovery

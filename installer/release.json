@@ -1,0 +1,11 @@
+{
+  "version": "0.26.1",
+  "region": "ap-southeast-2",
+  "bot_username": "veyquant_bot",
+  "template_url": "https://l5pha-releases-709754297713.s3.ap-southeast-2.amazonaws.com/0.26.1/install.json",
+  "files": {
+    "runtime.tar.gz": "f817e4ffa9910a76d7d7f25ce0cbf5356d3fa23842bee92cca03e76961dac6c8",
+    "bootstrap_install.py": "6f874ba58cd348d714f8b956fb3e7dfa9d4aa1c171aec74e4f8da1a6f05409de",
+    "install.json": "4e731e8368588ea61cdee037713e234bff4c293209cd9f6ed62980c761a80e7a"
+  }
+}

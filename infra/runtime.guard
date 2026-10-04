@@ -1,0 +1,19 @@
+rule encrypted_retained_data {
+  Resources.DataVolume.Properties.Encrypted == true
+  Resources.DataVolume.DeletionPolicy == "Retain"
+}
+rule metadata_tokens_required {
+  Resources.Host.Properties.MetadataOptions.HttpTokens == "required"
+}
+rule public_ports_only {
+  Resources.HostSecurityGroup.Properties.SecurityGroupIngress[*].FromPort IN [80, 443]
+  Resources.HostSecurityGroup.Properties.SecurityGroupIngress[*].ToPort IN [80, 443]
+  Resources.HostSecurityGroup.Properties.SecurityGroupIngress[*].IpProtocol == "tcp"
+}
+rule bootstrap_defaults_off {
+  Parameters.AllowSecretBootstrap.Default == "false"
+}
+rule secret_retained_no_plaintext {
+  Resources.BrokerSecret.DeletionPolicy == "Retain"
+  Resources.BrokerSecret.Properties.SecretString !exists
+}
